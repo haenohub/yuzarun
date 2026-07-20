@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>유자야 달려라!</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#87CEEB; font-family:'Segoe UI','Malgun Gothic',sans-serif; }
+  #game { position:fixed; inset:0; display:block; touch-action:none; }
+  #ui {
+    position:fixed; top:0; left:0; right:0; padding:14px 18px;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    pointer-events:none; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,.35);
+    font-weight:800; z-index:5;
+  }
+  .stat { font-size:clamp(16px,4.5vw,26px); line-height:1.25; }
+  .stat small { font-size:.62em; opacity:.85; font-weight:700; }
+  #best { text-align:right; }
+
+  .overlay {
+    position:fixed; inset:0; z-index:10;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; color:#fff; padding:24px;
+    background:radial-gradient(circle at 50% 40%, rgba(0,0,0,.15), rgba(0,0,0,.5));
+    backdrop-filter:blur(2px);
+  }
+  .overlay.hidden { display:none; }
+  .title {
+    font-size:clamp(38px,13vw,84px); font-weight:900; letter-spacing:-2px;
+    text-shadow:0 4px 0 #c98a2e, 0 8px 20px rgba(0,0,0,.4);
+    color:#ffd267;
+  }
+  .subtitle { font-size:clamp(15px,4.5vw,22px); margin-top:6px; opacity:.95; font-weight:700; }
+  .btn {
+    margin-top:26px; pointer-events:auto; cursor:pointer;
+    background:#ff8a3d; color:#fff; border:none; border-radius:999px;
+    padding:16px 42px; font-size:clamp(18px,5vw,26px); font-weight:900;
+    box-shadow:0 6px 0 #c9591e, 0 10px 24px rgba(0,0,0,.3);
+    transition:transform .08s, box-shadow .08s;
+  }
+  .btn:active { transform:translateY(4px); box-shadow:0 2px 0 #c9591e, 0 4px 12px rgba(0,0,0,.3); }
+  .hint {
+    margin-top:22px; font-size:clamp(13px,3.6vw,17px); opacity:.9; font-weight:600;
+    line-height:1.7; max-width:420px;
+  }
+  .hint b { color:#ffd267; }
+  .go-score { font-size:clamp(20px,6vw,32px); font-weight:900; margin-top:10px; }
+  .go-score span { color:#ffd267; }
+  .pop { animation:pop .5s ease; }
+  @keyframes pop { 0%{transform:scale(.6);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
+  .foot { position:fixed; bottom:10px; width:100%; text-align:center; color:rgba(255,255,255,.7); font-size:12px; z-index:5; pointer-events:none; }
+
+  /* ===== 인트로 화면 ===== */
+  #startScreen{
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,255,255,.18), rgba(0,0,0,.0) 60%),
+      linear-gradient(180deg, #8fd3f4 0%, #a8e0f0 55%, #d7f0e3 100%);
+    backdrop-filter:none;
+  }
+  .intro-dog{
+    width:min(58vw, 240px); height:auto; margin-bottom:-6px;
+    filter:drop-shadow(0 14px 14px rgba(0,0,0,.25));
+    animation:dogBounce 1.1s ease-in-out infinite;
+    pointer-events:none; user-select:none;
+  }
+  @keyframes dogBounce{
+    0%,100%{ transform:translateY(0) rotate(-3deg) }
+    50%{ transform:translateY(-22px) rotate(3deg) }
+  }
+  .title-main{
+    font-size:clamp(44px,13vw,82px); font-weight:900; letter-spacing:-1px; line-height:1.08;
+    color:#ffd94a; margin-top:6px;
+    text-shadow:
+      -2px -2px 0 #6b3d0c, 2px -2px 0 #6b3d0c, -2px 2px 0 #6b3d0c, 2px 2px 0 #6b3d0c,
+      -3px 0 0 #6b3d0c, 3px 0 0 #6b3d0c, 0 -3px 0 #6b3d0c, 0 3px 0 #6b3d0c,
+      0 7px 0 #8a5212, 0 9px 0 #6b3d0c, 0 15px 20px rgba(0,0,0,.4);
+  }
+  .title-main .run{ color:#ff8f2e; display:inline-block; animation:wiggle 1.1s ease-in-out infinite; }
+  @keyframes wiggle{ 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+  .paws{ font-size:clamp(16px,4.5vw,24px); margin-top:8px; letter-spacing:6px; }
+  .best-line{ margin-top:10px; font-weight:800; color:#5a3b1a; opacity:.85; font-size:clamp(13px,3.6vw,16px); }
+  #startScreen .btn{ background:#ff8a3d; }
+  #startScreen .hint{ color:#4a6a55; }
+  #startScreen .hint b{ color:#e07a1f; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div class="stat">🦴 <span id="score">0</span><br><small>거리 <span id="dist">0</span>m</small></div>
+  <div class="stat" id="best">🏆 <span id="bestScore">0</span></div>
+</div>
+
+<div class="overlay" id="startScreen">
+  <img class="intro-dog" src="yuza.png" alt="유자">
+  <div class="title-main pop">유자야<br><span class="run">달려라!</span></div>
+  <div class="paws">🐾 🐾 🐾</div>
+  <div class="hint">
+    화면을 <b>터치</b>하면 유자가 점프!<br>
+    <b>두 번 연속 터치</b>하면 더블 점프!<br>
+    장애물과 낭떠러지를 피하고 <b>🦴 먹이</b>를 먹어요.
+  </div>
+  <button class="btn" id="startBtn">시작하기</button>
+  <div class="best-line">🏆 최고 기록 <span id="introBest">0</span>개</div>
+</div>
+
+<div class="overlay hidden" id="overScreen">
+  <div class="title" style="font-size:clamp(30px,10vw,60px)">GAME&nbsp;OVER</div>
+  <div class="go-score">거리 <span id="goDist">0</span>m · 🦴 <span id="goScore">0</span></div>
+  <div class="subtitle" id="goMsg" style="margin-top:14px"></div>
+  <button class="btn" id="retryBtn">다시 하기</button>
+</div>
+
+<div class="foot">유자를 위한 게임 🐶💛</div>
+
+<script>
+/* ============================================================
+   유자런 (Yuza Run) — 횡스크롤 러닝 게임
+   - 터치/클릭/스페이스: 점프 (공중에서 한 번 더 = 더블 점프)
+   - 장애물 & 낭떠러지 회피, 먹이 수집
+   ============================================================ */
+(function(){
+  "use strict";
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // ---- 유자 스프라이트 로드 ----
+  const yuzaImg = new Image();
+  let yuzaReady = false;
+  function onYuzaLoad(){
+    yuzaReady = true;
+    if(typeof yuzaSize==='function'){ yuzaSize(); if(state!==1){ yuza.y = GROUND_Y - yuza.h; } }
+  }
+  yuzaImg.onload = onYuzaLoad;
+  yuzaImg.src = "yuza.png"; // 배경 제거된 유자
+
+  // ---- 화면/DPR ----
+  let W=0, H=0, DPR=1;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W*DPR; canvas.height = H*DPR;
+    canvas.style.width = W+'px'; canvas.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    computeLayout();
+  }
+  let GROUND_Y=0, GROUND_H=0, YUZA_X=0;
+  function computeLayout(){
+    GROUND_Y = Math.round(H*0.78);          // 지면 상단 y
+    GROUND_H = H - GROUND_Y;                  // 지면 두께
+    YUZA_X   = Math.round(W*0.24);            // 유자 화면상 고정 x
+  }
+  window.addEventListener('resize', resize);
+
+  // ---- 게임 상태 ----
+  const STATE = { MENU:0, PLAY:1, OVER:2 };
+  let state = STATE.MENU;
+
+  let world = 0;        // 월드 스크롤 오프셋(px)
+  let speed = 0;        // 현재 속도(px/frame 기준, dt로 보정)
+  const BASE_SPEED = 360;   // px/s
+  const MAX_SPEED  = 760;
+  let score = 0;        // 먹이 개수
+  let bestScore = +(localStorage.getItem('yuza_best')||0);
+
+  // 지면 세그먼트: 이어진 땅 구간들 [{s:startWorldX, e:endWorldX}]
+  let segments = [];
+  let obstacles = [];   // {x, w, h, type}
+  let foods = [];       // {x, y, r, got}
+  let particles = [];   // 먹이 이펙트
+  let clouds = [];
+  let genX = 0;         // 지금까지 생성한 월드 x
+  let dogTrail = [];    // 달릴 때 먼지
+
+  // 유자 물리
+  const yuza = {
+    y:0, vy:0, w:0, h:0,
+    onGround:true, jumps:0, rot:0, targetRot:0,
+    scaleY:1, scaleX:1, falling:false
+  };
+  const GRAVITY = 2100;      // px/s^2
+  const JUMP_V  = 780;       // 첫 점프
+  const JUMP_V2 = 720;       // 더블 점프
+
+  function yuzaSize(){
+    // 유자 크기: 화면 높이에 비례
+    const h = Math.min(H*0.16, 150);
+    let ratio = 1.5;
+    if(yuzaReady && yuzaImg.height) ratio = yuzaImg.width/yuzaImg.height;
+    yuza.h = h; yuza.w = h*ratio;
+  }
+
+  // ---- 절차적 생성 ----
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function chance(p){ return Math.random()<p; }
+
+  function resetGen(){
+    segments=[]; obstacles=[]; foods=[]; particles=[]; dogTrail=[];
+    genX = 0;
+    // 시작 안전 발판
+    const startEnd = world + W*1.3;
+    segments.push({ s: world - W, e: startEnd });
+    genX = startEnd;
+    // 이후 초반은 잠깐 여유
+    generateAhead();
+  }
+
+  function difficulty(){
+    // 0 ~ 1, 거리와 함께 증가
+    return Math.min(1, world/9000);
+  }
+
+  function generateAhead(){
+    const limit = world + W*2.2;
+    while(genX < limit){
+      const d = difficulty();
+
+      // 낭떠러지(갭) 생성 여부
+      const gapChance = 0.18 + d*0.22;
+      let gap = 0;
+      if(chance(gapChance)){
+        gap = rand(90, 150 + d*130);   // 갭 폭
+      }
+      if(gap>0){
+        genX += gap; // 빈 공간
+      }
+
+      // 새 땅 세그먼트
+      const segLen = rand(260, 520);
+      const seg = { s: genX, e: genX+segLen };
+      segments.push(seg);
+
+      // 이 세그먼트 위에 장애물/먹이 배치
+      const innerStart = seg.s + 70;
+      const innerEnd   = seg.e - 70;
+      if(innerEnd > innerStart){
+        // 장애물
+        if(chance(0.55 + d*0.25) && segLen>200){
+          const ox = rand(innerStart, innerEnd);
+          const oh = rand(38, 44 + d*40);
+          const ow = rand(26, 40);
+          obstacles.push({ x:ox, w:ow, h:oh, type: chance(0.5)?'rock':'cactus' });
+        }
+        // 먹이: 땅 위 or 갭 위 아치형
+        if(chance(0.7)){
+          const fx = rand(innerStart, innerEnd);
+          foods.push({ x:fx, y: GROUND_Y - rand(60,150), r:15, got:false });
+        }
+      }
+      // 갭 위를 넘는 먹이 아치 (점프 유도)
+      if(gap>110 && chance(0.8)){
+        const cx = seg.s - gap/2;
+        for(let i=-1;i<=1;i++){
+          foods.push({ x: cx + i*46, y: GROUND_Y - 150 + Math.abs(i)*26, r:14, got:false });
+        }
+      }
+
+      genX = seg.e;
+    }
+    // 오래된 것 청소
+    const cut = world - W;
+    segments = segments.filter(s=> s.e > cut);
+    obstacles = obstacles.filter(o=> o.x > cut);
+    foods = foods.filter(f=> f.x > cut && !f.got);
+  }
+
+  function groundTopAt(worldX){
+    // 해당 월드 x에 땅이 있으면 GROUND_Y, 없으면 null(낭떠러지)
+    for(const s of segments){
+      if(worldX >= s.s && worldX <= s.e) return GROUND_Y;
+    }
+    return null;
+  }
+
+  // ---- 구름 ----
+  function initClouds(){
+    clouds = [];
+    for(let i=0;i<6;i++){
+      clouds.push({ x:Math.random()*W, y:rand(40,H*0.4), s:rand(0.02,0.06), sc:rand(0.6,1.3) });
+    }
+  }
+
+  // ---- 입력 ----
+  function doJump(){
+    if(state===STATE.MENU){ startGame(); return; }
+    if(state===STATE.OVER){ return; }
+    if(state!==STATE.PLAY) return;
+    if(yuza.onGround){
+      yuza.vy = -JUMP_V; yuza.onGround=false; yuza.jumps=1;
+      yuza.scaleY=1.25; yuza.scaleX=0.85;
+      spawnDust();
+    } else if(yuza.jumps<2){
+      yuza.vy = -JUMP_V2; yuza.jumps=2;
+      yuza.scaleY=1.3; yuza.scaleX=0.82;
+      // 더블점프 회전 한 바퀴
+      yuza.spin = 1;
+      for(let i=0;i<8;i++) particles.push({x:YUZA_X, y:yuza.y+yuza.h*0.5, vx:rand(-120,120), vy:rand(-40,120), life:0.4, c:'#fff', r:rand(2,4)});
+    }
+  }
+  function onPress(e){ e.preventDefault(); doJump(); }
+  canvas.addEventListener('pointerdown', onPress, {passive:false});
+  window.addEventListener('keydown', e=>{
+    if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault();
+      if(state===STATE.OVER) startGame(); else doJump();
+    }
+  });
+
+  function spawnDust(){
+    for(let i=0;i<6;i++) dogTrail.push({x:YUZA_X-yuza.w*0.2, y:GROUND_Y, vx:rand(-140,-40), vy:rand(-120,-10), life:0.5, r:rand(3,7)});
+  }
+
+  // ---- 게임 시작/종료 ----
+  const el = id=>document.getElementById(id);
+  function startGame(){
+    state = STATE.PLAY;
+    world=0; speed=BASE_SPEED; score=0;
+    yuzaSize();
+    yuza.y = GROUND_Y - yuza.h; yuza.vy=0; yuza.onGround=true; yuza.jumps=0;
+    yuza.rot=0; yuza.spin=0; yuza.scaleX=1; yuza.scaleY=1; yuza.falling=false;
+    resetGen();
+    el('startScreen').classList.add('hidden');
+    el('overScreen').classList.add('hidden');
+    resetClock = true;   // 다음 프레임에서 rAF 시계로 dt 초기화
+  }
+  function gameOver(reason){
+    if(state!==STATE.PLAY) return;
+    state = STATE.OVER;
+    const dist = Math.floor(world/40);
+    if(score>bestScore){ bestScore=score; localStorage.setItem('yuza_best', bestScore); }
+    el('goDist').textContent = dist;
+    el('goScore').textContent = score;
+    el('bestScore').textContent = bestScore;
+    el('introBest').textContent = bestScore;
+    const msgs = reason==='fall'
+      ? ['앗! 유자가 떨어졌어요 🕳️','낭떠러지 조심! 🐕']
+      : ['부딪혔어요! 😵','아야! 장애물이었어요 🪨'];
+    el('goMsg').textContent = msgs[Math.floor(Math.random()*msgs.length)];
+    const sc = el('overScreen'); sc.classList.remove('hidden');
+    sc.querySelector('.title').classList.remove('pop'); void sc.offsetWidth; sc.querySelector('.title').classList.add('pop');
+  }
+
+  el('startBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+  el('retryBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+
+  // ---- 업데이트 ----
+  let lastT = performance.now();
+  let resetClock = false;
+  function update(dt){
+    // 속도 증가
+    speed = Math.min(MAX_SPEED, BASE_SPEED + world*0.02);
+    world += speed*dt;
+    generateAhead();
+
+    // 유자 물리
+    yuza.vy += GRAVITY*dt;
+    yuza.y  += yuza.vy*dt;
+
+    const yuzaWorldX = world + YUZA_X;
+    const gTop = groundTopAt(yuzaWorldX);
+    const feet = yuza.y + yuza.h;
+
+    if(gTop!==null){
+      if(feet >= gTop && yuza.vy>=0){
+        yuza.y = gTop - yuza.h; yuza.vy=0;
+        if(!yuza.onGround){ yuza.scaleY=0.8; yuza.scaleX=1.2; spawnDust(); }
+        yuza.onGround=true; yuza.jumps=0; yuza.spin=0; yuza.rot=0;
+      } else {
+        yuza.onGround=false;
+      }
+    } else {
+      // 낭떠러지 위 — 떨어지는 중
+      yuza.onGround=false;
+      if(yuza.y > H+80){ gameOver('fall'); }
+    }
+
+    // 스쿼시 복원
+    yuza.scaleX += (1-yuza.scaleX)*Math.min(1,dt*12);
+    yuza.scaleY += (1-yuza.scaleY)*Math.min(1,dt*12);
+    // 공중 회전(더블점프 스핀)
+    if(yuza.spin>0){
+      yuza.rot += dt*14;
+      if(yuza.rot>=Math.PI*2){ yuza.rot=0; yuza.spin=0; }
+    } else if(!yuza.onGround){
+      yuza.rot = Math.max(-0.35, Math.min(0.5, yuza.vy/1600));
+    } else {
+      yuza.rot += (0-yuza.rot)*Math.min(1,dt*10);
+    }
+
+    // 장애물 충돌
+    const yuzaBox = {
+      x: YUZA_X + yuza.w*0.16, y: yuza.y + yuza.h*0.18,
+      w: yuza.w*0.64, h: yuza.h*0.72
+    };
+    for(const o of obstacles){
+      const sx = o.x - world;
+      if(sx < -60 || sx > W+60) continue;
+      const ob = { x:sx - o.w/2, y:GROUND_Y - o.h, w:o.w, h:o.h };
+      if(rectHit(yuzaBox, ob)){ gameOver('hit'); break; }
+    }
+
+    // 먹이 수집
+    const fcx = YUZA_X + yuza.w*0.5, fcy = yuza.y + yuza.h*0.5;
+    for(const f of foods){
+      if(f.got) continue;
+      const sx = f.x - world;
+      if(sx < -40) continue;
+      if(sx > W+40) break;
+      const dx = sx - fcx, dy = f.y - fcy;
+      if(dx*dx+dy*dy < (f.r+yuza.h*0.42)*(f.r+yuza.h*0.42)){
+        f.got=true; score++;
+        el('score').textContent = score;
+        for(let i=0;i<10;i++) particles.push({x:sx,y:f.y,vx:rand(-160,160),vy:rand(-200,40),life:0.6,c:'#ffd267',r:rand(2,5)});
+      }
+    }
+    el('score').textContent = score;
+    el('dist').textContent = Math.floor(world/40);
+
+    // 파티클
+    for(const p of particles){ p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=900*dt; }
+    particles = particles.filter(p=>p.life>0);
+    for(const p of dogTrail){ p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=400*dt; }
+    dogTrail = dogTrail.filter(p=>p.life>0);
+
+    // 구름
+    for(const c of clouds){ c.x -= c.s*speed*dt*6; if(c.x < -140){ c.x=W+80; c.y=rand(40,H*0.4);} }
+  }
+
+  function rectHit(a,b){
+    return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+  }
+
+  // ---- 렌더 ----
+  function drawBackground(){
+    // 하늘 그라데이션
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#8fd3f4'); g.addColorStop(0.6,'#a8e0f0'); g.addColorStop(1,'#d7f0e3');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // 태양
+    ctx.fillStyle='rgba(255,240,180,0.9)';
+    ctx.beginPath(); ctx.arc(W*0.82, H*0.18, 46, 0, Math.PI*2); ctx.fill();
+    // 구름
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    for(const c of clouds) cloud(c.x, c.y, 40*c.sc);
+    // 먼 언덕(패럴랙스)
+    const off = (world*0.15)%(W);
+    ctx.fillStyle='#bfe6c8';
+    hills(-off, GROUND_Y+10, W*0.5, 90);
+    hills(-off+W, GROUND_Y+10, W*0.5, 90);
+    ctx.fillStyle='#a5d9b0';
+    const off2=(world*0.28)%W;
+    hills(-off2+W*0.35, GROUND_Y+18, W*0.4, 60);
+    hills(-off2+W*1.35, GROUND_Y+18, W*0.4, 60);
+  }
+  function cloud(x,y,r){
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2); ctx.arc(x+r*0.9,y+6,r*0.75,0,Math.PI*2);
+    ctx.arc(x-r*0.9,y+8,r*0.7,0,Math.PI*2); ctx.arc(x+r*0.2,y-r*0.5,r*0.65,0,Math.PI*2);
+    ctx.fill();
+  }
+  function hills(x,y,w,h){
+    ctx.beginPath(); ctx.moveTo(x,y);
+    ctx.quadraticCurveTo(x+w*0.5, y-h, x+w, y);
+    ctx.quadraticCurveTo(x+w*1.5, y-h*0.8, x+w*2, y);
+    ctx.lineTo(x+w*2, H); ctx.lineTo(x, H); ctx.closePath(); ctx.fill();
+  }
+
+  function drawGround(){
+    for(const s of segments){
+      const sx = s.s - world, ex = s.e - world;
+      if(ex < -20 || sx > W+20) continue;
+      const x = Math.max(-20, sx), w = Math.min(W+20, ex) - x;
+      // 흙
+      ctx.fillStyle='#8a5a3b';
+      ctx.fillRect(x, GROUND_Y, w, GROUND_H);
+      // 잔디 상단
+      ctx.fillStyle='#6bbf59';
+      ctx.fillRect(x, GROUND_Y, w, 14);
+      ctx.fillStyle='#57a848';
+      ctx.fillRect(x, GROUND_Y+12, w, 5);
+      // 잔디 결
+      ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=2;
+      for(let gx = Math.ceil((x)/34)*34; gx < x+w; gx+=34){
+        ctx.beginPath(); ctx.moveTo(gx, GROUND_Y+GROUND_H); ctx.lineTo(gx, GROUND_Y+22); ctx.stroke();
+      }
+      // 세그먼트 가장자리(낭떠러지 벽)
+      ctx.fillStyle='rgba(0,0,0,0.12)';
+      ctx.fillRect(x, GROUND_Y, 4, GROUND_H);
+      ctx.fillRect(x+w-4, GROUND_Y, 4, GROUND_H);
+    }
+  }
+
+  function drawObstacles(){
+    for(const o of obstacles){
+      const sx = o.x - world;
+      if(sx < -60 || sx > W+60) continue;
+      const baseY = GROUND_Y;
+      if(o.type==='rock'){
+        ctx.fillStyle='#7d7d85';
+        ctx.beginPath();
+        ctx.moveTo(sx-o.w/2, baseY);
+        ctx.lineTo(sx-o.w*0.35, baseY-o.h);
+        ctx.lineTo(sx+o.w*0.2, baseY-o.h*0.9);
+        ctx.lineTo(sx+o.w/2, baseY);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#9a9aa2';
+        ctx.beginPath();
+        ctx.moveTo(sx-o.w*0.35, baseY-o.h);
+        ctx.lineTo(sx+o.w*0.2, baseY-o.h*0.9);
+        ctx.lineTo(sx, baseY-o.h*0.55);
+        ctx.closePath(); ctx.fill();
+      } else {
+        // 선인장
+        ctx.fillStyle='#3fae5a';
+        rr(sx-o.w*0.22, baseY-o.h, o.w*0.44, o.h, 8);
+        rr(sx-o.w*0.55, baseY-o.h*0.6, o.w*0.33, o.h*0.16, 6);
+        rr(sx-o.w*0.55, baseY-o.h*0.6, o.w*0.16, o.h*0.4, 6);
+        rr(sx+o.w*0.22, baseY-o.h*0.75, o.w*0.33, o.h*0.16, 6);
+        rr(sx+o.w*0.39, baseY-o.h*0.75, o.w*0.16, o.h*0.45, 6);
+      }
+    }
+  }
+  function rr(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill();
+  }
+
+  function drawFoods(){
+    for(const f of foods){
+      if(f.got) continue;
+      const sx = f.x - world;
+      if(sx < -30 || sx > W+30) continue;
+      const bob = Math.sin((world+f.x)*0.02)*4;
+      // 뼈다귀
+      ctx.save();
+      ctx.translate(sx, f.y+bob);
+      ctx.rotate(-0.5);
+      // 광채
+      ctx.fillStyle='rgba(255,220,120,0.35)';
+      ctx.beginPath(); ctx.arc(0,0,f.r+8,0,Math.PI*2); ctx.fill();
+      bone(f.r);
+      ctx.restore();
+    }
+  }
+  function bone(r){
+    ctx.fillStyle='#fff7e0'; ctx.strokeStyle='#e8c98a'; ctx.lineWidth=2;
+    const L=r*1.5;
+    ctx.beginPath();
+    ctx.arc(-L,-r*0.5,r*0.55,0,Math.PI*2); ctx.arc(-L,r*0.5,r*0.55,0,Math.PI*2);
+    ctx.arc(L,-r*0.5,r*0.55,0,Math.PI*2); ctx.arc(L,r*0.5,r*0.55,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillRect(-L,-r*0.55,L*2,r*1.1);
+    ctx.beginPath(); ctx.arc(-L,-r*0.5,r*0.55,0,Math.PI*2); ctx.arc(-L,r*0.5,r*0.55,0,Math.PI*2);
+    ctx.arc(L,-r*0.5,r*0.55,0,Math.PI*2); ctx.arc(L,r*0.5,r*0.55,0,Math.PI*2); ctx.stroke();
+  }
+
+  function drawParticles(){
+    for(const p of dogTrail){
+      ctx.fillStyle=`rgba(180,150,110,${Math.max(0,p.life)})`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    }
+    for(const p of particles){
+      ctx.fillStyle = p.c==='#fff' ? `rgba(255,255,255,${Math.max(0,p.life)})` : `rgba(255,210,103,${Math.max(0,p.life*1.5)})`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  function drawYuza(){
+    const bob = yuza.onGround ? Math.sin(world*0.05)*3 : 0;
+    const cx = YUZA_X + yuza.w*0.5;
+    const cy = yuza.y + yuza.h*0.5 + bob;
+    // 그림자
+    const gTop = groundTopAt(world+YUZA_X);
+    if(gTop!==null){
+      const sh = Math.max(0.2, 1-(gTop-(yuza.y+yuza.h))/260);
+      ctx.fillStyle=`rgba(0,0,0,${0.22*sh})`;
+      ctx.beginPath(); ctx.ellipse(cx, gTop+6, yuza.w*0.34*sh, 9*sh, 0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(yuza.rot);
+    ctx.scale(yuza.scaleX, yuza.scaleY);
+    if(yuzaReady){
+      ctx.drawImage(yuzaImg, -yuza.w/2, -yuza.h/2, yuza.w, yuza.h);
+    } else {
+      // 폴백: 간단한 강아지
+      ctx.fillStyle='#c99b6a';
+      rr(-yuza.w/2, -yuza.h*0.3, yuza.w, yuza.h*0.55, 18);
+      ctx.beginPath(); ctx.arc(yuza.w*0.32,-yuza.h*0.1,yuza.h*0.28,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    drawGround();
+    drawFoods();
+    drawObstacles();
+    drawParticles();
+    drawYuza();
+  }
+
+  // ---- 루프 ----
+  function loop(now){
+    if(resetClock){ lastT = now; resetClock = false; }
+    let dt = (now-lastT)/1000; lastT = now;
+    if(dt<0) dt=0;         // 시계 역행(탭 전환 등) 방어
+    if(dt>0.05) dt=0.05;   // 큰 프레임 튐 방지
+    if(state===STATE.PLAY) update(dt);
+    else { // 메뉴/오버에서도 배경 살짝 움직임
+      for(const c of clouds){ c.x -= c.s*40*dt; if(c.x<-140){c.x=W+80;c.y=rand(40,H*0.4);} }
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- 초기화 ----
+  function init(){
+    resize(); yuzaSize(); initClouds();
+    el('bestScore').textContent = bestScore;
+    el('introBest').textContent = bestScore;
+    yuza.y = GROUND_Y - yuza.h;
+    // 메뉴 배경용 세그먼트
+    segments=[{s:world-W, e:world+W*2}];
+    requestAnimationFrame(loop);
+  }
+  window.addEventListener('resize', ()=>{ yuzaSize(); });
+  // 캐시로 이미 로드됐다면 즉시 반영
+  if(yuzaImg.complete && yuzaImg.naturalWidth){ onYuzaLoad(); }
+  init();
+
+})();
+</script>
+</body>
+</html>
